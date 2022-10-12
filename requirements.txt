@@ -1,0 +1,2 @@
+docstring-parser>=0.15
+pytest>=7.1.2
