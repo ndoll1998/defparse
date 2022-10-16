@@ -3,8 +3,23 @@ import argparse
 from docstring_parser import parse
 from types import SimpleNamespace
 from functools import wraps
-from typing import Callable, List, Any, TypeVar, get_origin
+# type hints
+from typing import (
+    Any, 
+    List,
+    Tuple,
+    Union,
+    Literal, 
+    Optional,
+    TypeVar, 
+    Callable 
+)
+from typing import get_origin, get_args
 from .typehints import Ignore
+# import to allow correct type inference from type hints
+# like 'typing.Optional' and `defparse.Ignore` in docstring
+import typing
+import defparse.typehints as defparse
 
 T = TypeVar('T')
 
@@ -37,48 +52,83 @@ class ArgumentParser(argparse.ArgumentParser):
             # check if parameter should be ignored
             if (name in ignore):
                 continue
-            
-            # find/infer parameter type
-            if param.annotation != param.empty:
-                param_type = param.annotation
-            elif param.default != param.empty:
-                param_type = type(param.default)
-            elif name in doc_params:
-                param_type = eval(doc_params[name].type_name)
-            else:
-                param_type = None
-
-            # check if type is marked as ignore            
-            if get_origin(param_type) is Ignore:
-                continue
 
             argname = "--" + name
+            kwargs = {'required': True}
+
+            # add default value
+            if param.default != param.empty:
+                kwargs['default'] = param.default
+                kwargs['required'] = False
+
+            # find/infer parameter type
+            if param.annotation != param.empty:
+                kwargs['type'] = param.annotation
+            elif name in doc_params:
+                kwargs['type'] = eval(doc_params[name].type_name)
+
+            # handle type hints
+            if 'type' in kwargs:
+                
+                origin = True
+                while origin is not None:
+                    # get origin and args
+                    origin = get_origin(kwargs['type'])
+                    args = get_args(kwargs['type'])
+                    # check if type is marked as ignore
+                    if origin is Ignore:
+                        break
+                    elif origin is Union:
+                        # check if argument is marked by Optional
+                        if args[1] is type(None):
+                            # mark as not required and update type
+                            kwargs['type'] = args[0]
+                            kwargs['required'] = False
+                        else:
+                            raise TypeError("Argument Type cannot be Union of multiple types!")
+                    elif origin is Literal:
+                        # infer type from args and add choices argument
+                        kwargs['type'] = type(args[0])
+                        kwargs['choices'] = args
+                    elif origin is list:
+                        # update keyword arguments
+                        kwargs['type'] = args[0]
+                        kwargs['nargs'] = '+'
+                    elif origin is tuple:
+                        # check that types match and update keyword arguments
+                        assert all(type(arg) is type(args[0]) for arg in args[1:]), "All types must match"
+                        kwargs['type'] = args[0]
+                        kwargs['nargs'] = len(args)
+                
+                if origin is Ignore:
+                    # break by ignore type hint
+                    continue
+
+            elif 'default' in kwargs:
+                # no type found, then infer from default
+                kwargs['type'] = type(kwargs['default'])
+            
             # check for conflict
             if argname in self._option_string_actions:
                 # argument with same name already registered
                 action = self._option_string_actions[argname]
                 # check if types match
-                if (param_type is not None) and (action.type is not param_type):
+                if ('type' in kwargs) and (action.type is not kwargs['type']):
                     # type conflict
                     raise TypeError("Type conflict between registered argument `%s?`:`%s` and corresponding parameter of callable %s" % (argname, action.type, fn))
                 # if types match than there is no conflict
                 # the argument is just used multiple times
                 continue
 
-            if param_type is None:
+            if 'type' not in kwargs:
                 raise AttributeError("Cannot find argument type for argument %s in callable %s" % (name, fn))
 
             # get description from docstring
-            description = doc_params[name].description.replace('\n', ' ') if name in doc_params else None
+            if name in doc_params:
+                kwargs['help'] = doc_params[name].description.replace('\n', ' ')
 
             # add arguments from signature
-            group.add_argument(
-                argname, 
-                type=param_type,
-                default=param.default if param.default != inspect._empty else None,
-                required=param.default is param.empty,
-                help=description
-            )
+            group.add_argument(argname, **kwargs)
 
         # create function executor
         @wraps(fn)

@@ -1,4 +1,5 @@
 from defparse import ArgumentParser, Ignore
+from typing import Literal, List, Tuple, Optional
 
 class TestFunctionParsing():
 
@@ -67,37 +68,6 @@ class TestFunctionParsing():
         # check if required
         assert parser._option_string_actions['--A'].required is True
         assert parser._option_string_actions['--B'].required is False
-    
-    def test_callable_executor(self):
-
-        # create parser
-        parser = ArgumentParser()
-
-        def test_function_A(A, B=0.3):
-            """ Test function with type annotations and defaults
-
-                Args:
-                    A (int): description of argument A
-                    B (float): description of argument B
-            """
-            return (A, B)
-
-        # add arguments from callable
-        test_function_A = parser.add_args_from_callable(test_function_A)
-
-        # parse arguments
-        parser.parse_args("--A 4".split())
-        # execute callable and check result
-        A, B = test_function_A()
-        assert A == 4
-        assert B == 0.3
-        
-        # parse arguments
-        parser.parse_args("--A 3 --B 1.2".split())
-        # execute callable and check result
-        A, B = test_function_A()
-        assert A == 3
-        assert B == 1.2
 
     def test_ignore_arguments(self):
         
@@ -145,7 +115,7 @@ class TestFunctionParsing():
 
                 Args:
                     A (int): description of argument A
-                    B (Ignore[float]): description of argument B
+                    B (defparse.Ignore[float]): description of argument B
             """
             return (A, B)
 
@@ -155,6 +125,180 @@ class TestFunctionParsing():
         # check args
         assert "--A" not in parser._option_string_actions
         assert "--B" not in parser._option_string_actions
+    
+    def test_optional_argument(self):
+        
+        # create parser
+        parser = ArgumentParser()
+
+        def test_function_A(A:Optional[int], B):
+            """ Test function with type annotations and defaults
+
+                Args:
+                    A (Optional[int]): description of argument A
+                    B (Optional[int]): description of argument B
+            """
+            return (A, B)
+
+        # add arguments from callable
+        parser.add_args_from_callable(test_function_A)
+
+        # check args
+        assert "--A" in parser._option_string_actions
+        assert "--B" in parser._option_string_actions
+        # check type and choices from signature
+        assert parser._option_string_actions['--A'].type is int
+        assert parser._option_string_actions['--A'].required is False
+        # check type and choices from docstring
+        assert parser._option_string_actions['--B'].type is int
+        assert parser._option_string_actions['--B'].required is False
+
+    def test_literal_argument(self):
+        
+        # create parser
+        parser = ArgumentParser()
+
+        def test_function_A(A:Literal[1, 2, 3], B=0.3):
+            """ Test function with type annotations and defaults
+
+                Args:
+                    A (Literal[1, 2, 3]): description of argument A
+                    B (typing.Literal[0.3, 0.4]): description of argument B
+            """
+            return (A, B)
+
+        # add arguments from callable
+        parser.add_args_from_callable(test_function_A)
+
+        # check args
+        assert "--A" in parser._option_string_actions
+        assert "--B" in parser._option_string_actions
+        # check type and choices from signature
+        assert parser._option_string_actions['--A'].type is type(1)
+        assert parser._option_string_actions['--A'].choices == (1, 2, 3)
+        # check type and choices from docstring
+        assert parser._option_string_actions['--B'].type is type(0.3)
+        assert parser._option_string_actions['--B'].choices == (0.3, 0.4)
+
+    def test_list_argument(self):
+        
+        # create parser
+        parser = ArgumentParser()
+
+        def test_function_A(A:List[int], B):
+            """ Test Function
+
+                Args:
+                    A (List[int]): A
+                    B (List[int]): B
+
+            """
+            return (A, B)
+
+        # add arguments from callable
+        parser.add_args_from_callable(test_function_A)
+
+        # check args
+        assert "--A" in parser._option_string_actions
+        assert "--B" in parser._option_string_actions
+        # check type from signature
+        assert parser._option_string_actions['--A'].type is int
+        assert parser._option_string_actions['--A'].nargs == '+'
+        # check type from docstring
+        assert parser._option_string_actions['--B'].type is int
+        assert parser._option_string_actions['--B'].nargs == '+'
+
+    def test_tuple_argument(self):
+        
+        # create parser
+        parser = ArgumentParser()
+
+        def test_function_A(A:Tuple[int, int], B):
+            """ Test Function
+
+                Args:
+                    A (Tuple[int, int]): A
+                    B (Tuple[int, int]): B
+
+            """
+            return (A, B)
+
+        # add arguments from callable
+        parser.add_args_from_callable(test_function_A)
+
+        # check args
+        assert "--A" in parser._option_string_actions
+        assert "--B" in parser._option_string_actions
+        # check type from signature
+        assert parser._option_string_actions['--A'].type is int
+        assert parser._option_string_actions['--A'].nargs == 2
+        # check type from docstring
+        assert parser._option_string_actions['--B'].type is int
+        assert parser._option_string_actions['--B'].nargs == 2
+    
+    def test_optional_list_of_literal_argument(self):
+        
+        # create parser
+        parser = ArgumentParser()
+
+        def test_function_A(A:Optional[List[Literal[1, 2, 3]]], B):
+            """ Test Function
+
+                Args:
+                    A (Optional[List[Literal[1, 2, 3]]]): A
+                    B (Optional[List[Literal[1, 2, 3]]]): B
+
+            """
+            return (A, B)
+
+        # add arguments from callable
+        parser.add_args_from_callable(test_function_A)
+        
+        # check args
+        assert "--A" in parser._option_string_actions
+        assert "--B" in parser._option_string_actions
+        # check type from signature
+        assert parser._option_string_actions['--A'].type is int
+        assert parser._option_string_actions['--A'].nargs == '+'
+        assert parser._option_string_actions['--A'].choices == (1, 2, 3)
+        assert parser._option_string_actions['--A'].required is False
+        # check type from docstring
+        assert parser._option_string_actions['--B'].type is int
+        assert parser._option_string_actions['--B'].nargs == '+'
+        assert parser._option_string_actions['--B'].choices == (1, 2, 3)
+        assert parser._option_string_actions['--B'].required is False
+
+    def test_callable_executor(self):
+
+        # create parser
+        parser = ArgumentParser()
+
+        def test_function_A(A, B=0.3):
+            """ Test function with type annotations and defaults
+
+                Args:
+                    A (int): description of argument A
+                    B (float): description of argument B
+            """
+            return (A, B)
+
+        # add arguments from callable
+        test_function_A = parser.add_args_from_callable(test_function_A)
+
+        # parse arguments
+        parser.parse_args("--A 4".split())
+        # execute callable and check result
+        A, B = test_function_A()
+        assert A == 4
+        assert B == 0.3
+        
+        # parse arguments
+        parser.parse_args("--A 3 --B 1.2".split())
+        # execute callable and check result
+        A, B = test_function_A()
+        assert A == 3
+        assert B == 1.2
+
     
     def test_multiple_callables_with_argument_conflict(self):
         
