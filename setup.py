@@ -14,7 +14,7 @@ setup(
     classifiers=[
         "License :: Freely Distributable",
         "License :: OSI Approved :: Apache Software License",
-        "Programming Language :: Python :: 3"
+        "Programming Language :: Python :: 3.9"
     ],
     install_requires=['docstring-parser>=0.15']
 ) 
