@@ -3,7 +3,8 @@ import argparse
 from docstring_parser import parse
 from types import SimpleNamespace
 from functools import wraps
-from typing import Callable, List, Any, TypeVar
+from typing import Callable, List, Any, TypeVar, get_origin
+from .typehints import Ignore
 
 T = TypeVar('T')
 
@@ -34,7 +35,7 @@ class ArgumentParser(argparse.ArgumentParser):
 
         for name, param in sig.parameters.items():            
             # check if parameter should be ignored
-            if name in ignore:
+            if (name in ignore):
                 continue
             
             # find/infer parameter type
@@ -46,7 +47,11 @@ class ArgumentParser(argparse.ArgumentParser):
                 param_type = eval(doc_params[name].type_name)
             else:
                 param_type = None
-            
+
+            # check if type is marked as ignore            
+            if get_origin(param_type) is Ignore:
+                continue
+
             argname = "--" + name
             # check for conflict
             if argname in self._option_string_actions:

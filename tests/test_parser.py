@@ -1,4 +1,4 @@
-from defparse import ArgumentParser
+from defparse import ArgumentParser, Ignore
 
 class TestFunctionParsing():
 
@@ -134,7 +134,28 @@ class TestFunctionParsing():
         A, B = test_function_A(A=3)
         assert A == 3
         assert B == 0.3
+        
+    def test_ignore_by_type_hint(self):
+        # create parser
+        parser = ArgumentParser()
 
+        # test ignore marker in signature and in doc
+        def test_function_A(A:Ignore[int], B):
+            """ Test function with type annotations and defaults
+
+                Args:
+                    A (int): description of argument A
+                    B (Ignore[float]): description of argument B
+            """
+            return (A, B)
+
+        # add arguments from callable
+        test_function_A = parser.add_args_from_callable(test_function_A)
+        
+        # check args
+        assert "--A" not in parser._option_string_actions
+        assert "--B" not in parser._option_string_actions
+    
     def test_multiple_callables_with_argument_conflict(self):
         
         # create parser
