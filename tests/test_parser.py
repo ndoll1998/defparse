@@ -1,4 +1,4 @@
-from defparse import ArgumentParser, Ignore
+from defparse import ArgumentParser, Ignore, uses
 from argparse import _StoreTrueAction, _StoreFalseAction
 from typing import Literal, List, Tuple, Optional
 
@@ -368,3 +368,37 @@ class TestFunctionParsing():
         A1, _ = test_function_A()
         A2, _ = test_function_B()
         assert A1 == A2
+
+    def test_uses_decorator(self):
+
+        # create parser
+        parser = ArgumentParser()
+        
+        def test_function_inner_A(A:int =1, i:Ignore[object] =None):
+            return A
+
+        def test_function_inner_B(B:int =2):
+            return B
+
+        @uses(test_function_inner_A)
+        @uses(test_function_inner_B)
+        def test_function_outer(A:int, **kwargs):
+            # make sure keyword arguments are filled
+            assert 'B' in kwargs
+            # call sub-functions
+            return (
+                test_function_inner_A(A, None),
+                test_function_inner_B(**kwargs)
+            )
+
+        # add arguments
+        test_function_outer = parser.add_args_from_callable(test_function_outer)
+
+        # check args
+        assert "--A" in parser._option_string_actions
+        assert "--B" in parser._option_string_actions
+        assert "--i" not in parser._option_string_actions
+        
+        # parse execute
+        parser.parse_args("")
+        test_function_outer()

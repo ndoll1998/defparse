@@ -5,7 +5,8 @@ from types import SimpleNamespace
 from functools import wraps
 # type hints
 from typing import (
-    Any, 
+    Any,
+    Set, 
     List,
     Tuple,
     Union,
@@ -23,6 +24,19 @@ import defparse.typehints as defparse
 
 T = TypeVar('T')
 
+class uses(object):
+    USED_FUNCTIONS_KEY = "__uses_functions__"
+
+    def __init__(self, used_fn:Callable):
+        self.used_fn = used_fn
+
+    def __call__(self, fn):
+        if hasattr(fn, uses.USED_FUNCTIONS_KEY):
+            getattr(fn, uses.USED_FUNCTIONS_KEY).add(self.used_fn)
+        else:
+            setattr(fn, uses.USED_FUNCTIONS_KEY, {self.used_fn})
+        return fn
+
 class ArgumentParser(argparse.ArgumentParser):
 
     def __init__(self, *args, formatter:Callable[[str], str] =lambda n: n, **kwargs):
@@ -35,17 +49,16 @@ class ArgumentParser(argparse.ArgumentParser):
         self._parsed_args = super(ArgumentParser, self).parse_args(*args, **kwargs)
         return self._parsed_args
 
-    def add_args_from_callable(
+    def _add_args_from_callable(
         self, 
-        fn:Callable[[Any], T], 
-        *,
-        group:str =None,
-        ignore:List[str] =[]
-    ) -> Callable[[Any], T]:
-    
-        # create argument group
-        group = self.add_argument_group(group or fn.__name__)
-        
+        fn:Callable[[Any], T],
+        group:object,
+        ignore:List[str]
+    ) -> Set[str]:
+
+        # list of all added arguments    
+        added_args = set()
+
         # get function signature
         sig = inspect.signature(fn)
 
@@ -53,12 +66,28 @@ class ArgumentParser(argparse.ArgumentParser):
         doc = inspect.getdoc(fn)
         doc_params = {p.arg_name: p for p in parse(doc).params} if doc is not None else {}
 
+        # check if function has keyword arguments
+        if any((p.kind == p.VAR_KEYWORD for p in sig.parameters.values())):
+            # add all arguments of used functions
+            # which populate the variable keyword arguments
+            if hasattr(fn, uses.USED_FUNCTIONS_KEY):
+                added_args = set.union(*(
+                    self._add_args_from_callable(
+                        fn=sub_fn,
+                        group=group,
+                        ignore=ignore
+                    )
+                    for sub_fn in getattr(fn, uses.USED_FUNCTIONS_KEY)
+                ))
+        
         for name, param in sig.parameters.items():            
             # check if parameter should be ignored
-            if (name in ignore):
+            # or is of kind variable keywords
+            if (name in ignore) or (param.kind == param.VAR_KEYWORD):
                 continue
 
-            argname = "--" + self.formatter(name)
+            name = self.formatter(name)
+            argname = "--" + name
             kwargs = {'required': True}
 
             # add default value
@@ -95,6 +124,10 @@ class ArgumentParser(argparse.ArgumentParser):
                         # infer type from args and add choices argument
                         kwargs['type'] = type(args[0])
                         kwargs['choices'] = args
+                    elif origin is set:
+                        # update keyword arguments
+                        kwargs['type'] = args[0]
+                        kwargs['nargs'] = '*'
                     elif origin is list:
                         # update keyword arguments
                         kwargs['type'] = args[0]
@@ -123,6 +156,7 @@ class ArgumentParser(argparse.ArgumentParser):
                     raise TypeError("Type conflict between registered argument `%s?`:`%s` and corresponding parameter of callable %s" % (argname, action.type, fn))
                 # if types match than there is no conflict
                 # the argument is just used multiple times
+                added_args.add(name.replace('-', '_'))
                 continue
 
             if 'type' not in kwargs:
@@ -139,7 +173,26 @@ class ArgumentParser(argparse.ArgumentParser):
 
             # add arguments from signature
             group.add_argument(argname, **kwargs)
+            added_args.add(name.replace('-', '_'))
 
+        # return list of added arguments
+        return added_args
+
+    def add_args_from_callable(
+        self, 
+        fn:Callable[[Any], T], 
+        *,
+        group:str =None,
+        ignore:List[str] =[]
+    ) -> Callable[[Any], T]:
+    
+        # add arguments to parser
+        added_args = self._add_args_from_callable(
+            fn=fn, 
+            group=self.add_argument_group(group or fn.__name__), 
+            ignore=ignore
+        )
+        
         # create function executor
         @wraps(fn)
         def call_wrapper(*args, **kwargs):
@@ -149,7 +202,7 @@ class ArgumentParser(argparse.ArgumentParser):
             # get arguments from parser
             parser_args = {
                 k:v for k, v in vars(self._parsed_args).items()
-                if (k in sig.parameters) and (k not in ignore)
+                if (k in added_args) and (k not in ignore)
             }
             # run callable
             return fn(*args, **kwargs, **parser_args)
