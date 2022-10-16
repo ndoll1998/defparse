@@ -25,6 +25,11 @@ T = TypeVar('T')
 
 class ArgumentParser(argparse.ArgumentParser):
 
+    def __init__(self, *args, formatter:Callable[[str], str] =lambda n: n, **kwargs):
+        super(ArgumentParser, self).__init__(*args, **kwargs)
+        # save argument formatter
+        self.formatter = formatter
+
     def parse_args(self, *args, **kwargs):
         # parse arguments and store them
         self._parsed_args = super(ArgumentParser, self).parse_args(*args, **kwargs)
@@ -53,7 +58,7 @@ class ArgumentParser(argparse.ArgumentParser):
             if (name in ignore):
                 continue
 
-            argname = "--" + name
+            argname = "--" + self.formatter(name)
             kwargs = {'required': True}
 
             # add default value
