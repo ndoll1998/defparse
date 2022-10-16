@@ -123,6 +123,11 @@ class ArgumentParser(argparse.ArgumentParser):
             if 'type' not in kwargs:
                 raise AttributeError("Cannot find argument type for argument %s in callable %s" % (name, fn))
 
+            # simple boolean arguments as options
+            if (kwargs['type'] is bool) and ('nargs' not in kwargs):
+                kwargs['action'] = 'store_false' if kwargs.get('default', False) else 'store_true'
+                kwargs.pop('type')
+
             # get description from docstring
             if name in doc_params:
                 kwargs['help'] = doc_params[name].description.replace('\n', ' ')

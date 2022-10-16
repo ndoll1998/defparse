@@ -1,4 +1,5 @@
 from defparse import ArgumentParser, Ignore
+from argparse import _StoreTrueAction, _StoreFalseAction
 from typing import Literal, List, Tuple, Optional
 
 class TestFunctionParsing():
@@ -68,6 +69,31 @@ class TestFunctionParsing():
         # check if required
         assert parser._option_string_actions['--A'].required is True
         assert parser._option_string_actions['--B'].required is False
+
+    def test_boolean_option(self):
+        
+        # create parser
+        parser = ArgumentParser()
+
+        # test ignore marker in signature and in doc
+        def test_function_A(A:bool, B =True):
+            """ Test function with type annotations and defaults
+
+                Args:
+                    A (bool): description of argument A
+                    B (bool): description of argument B
+            """
+            return (A, B)
+
+        # add arguments from callable
+        test_function_A = parser.add_args_from_callable(test_function_A)
+        
+        # check args
+        assert "--A" in parser._option_string_actions
+        assert "--B" in parser._option_string_actions
+        # check type and choices from signature
+        assert isinstance(parser._option_string_actions['--A'], _StoreTrueAction)  # no default -> assume False
+        assert isinstance(parser._option_string_actions['--B'], _StoreFalseAction) # as default is True
 
     def test_ignore_arguments(self):
         
