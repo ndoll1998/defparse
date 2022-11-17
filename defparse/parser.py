@@ -1,8 +1,9 @@
+from __future__ import annotations
 import inspect
 import argparse
 from docstring_parser import parse
 from types import SimpleNamespace
-from functools import wraps
+from dataclasses import dataclass
 # type hints
 from typing import (
     Any,
@@ -36,6 +37,26 @@ class uses(object):
         else:
             setattr(fn, uses.USED_FUNCTIONS_KEY, {self.used_fn})
         return fn
+
+@dataclass
+class ArgsContainer():
+    _parser:ArgumentParser
+    _arg_names:Set[str]
+    fn:Callable[[Any, ...], [T]]
+
+    @property
+    def kwargs(self) -> Dict[str, Any]:
+        # check if arguments are present
+        if not hasattr(self._parser, '_parsed_args'):
+            raise RuntimeError("No parsed arguments found! Did you forget to call `parse_args`?")
+        # get all arguments
+        return {k:v for k, v in vars(self._parser._parsed_args).items() if k in self._arg_names}
+
+    def execute(self, **extra_kwargs) -> T:
+        return self.fn(**self.kwargs, **extra_kwargs)
+
+    def __call__(self, **extra_kwargs) -> T:
+        return self.execute(**extra_kwargs)
 
 class ArgumentParser(argparse.ArgumentParser):
 
@@ -119,6 +140,7 @@ class ArgumentParser(argparse.ArgumentParser):
                             kwargs['type'] = args[0]
                             kwargs['required'] = False
                         else:
+                            # Union is not supported
                             raise TypeError("Argument Type cannot be Union of multiple types!")
                     elif origin is Literal:
                         # infer type from args and add choices argument
@@ -184,27 +206,12 @@ class ArgumentParser(argparse.ArgumentParser):
         *,
         group:str =None,
         ignore:List[str] =[]
-    ) -> Callable[[Any], T]:
-    
+    ) -> ArgsContainer[T]: 
         # add arguments to parser
         added_args = self._add_args_from_callable(
             fn=fn, 
             group=self.add_argument_group(group or fn.__name__), 
             ignore=ignore
         )
-        
-        # create function executor
-        @wraps(fn)
-        def call_wrapper(*args, **kwargs):
-            if not hasattr(self, '_parsed_args'):
-                raise RuntimeError("No parsed arguments found! Did you forget to call `parse_args`?")
-
-            # get arguments from parser
-            parser_args = {
-                k:v for k, v in vars(self._parsed_args).items()
-                if (k in added_args) and (k not in ignore)
-            }
-            # run callable
-            return fn(*args, **kwargs, **parser_args)
-
-        return call_wrapper
+        # return argument container
+        return ArgsContainer(self, added_args, fn)
